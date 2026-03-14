@@ -1,95 +1,94 @@
-# High-Performance Multi-Channel Mem-to-Mem DMA Controller IP Core
+# High-Performance Multi-Channel Mem-to-Mem DMA Controller IP
 
 ![Platform](https://img.shields.io/badge/Platform-Xilinx_Vivado-blue)
 ![Language](https://img.shields.io/badge/Language-Verilog-green)
 ![Protocol](https://img.shields.io/badge/Protocol-AXI4--Full_/_AXI4--Lite-red)
 ![Architecture](https://img.shields.io/badge/Architecture-Pipelined_FIFO-orange)
-![Channels](https://img.shields.io/badge/Channels-4_Independent-blueviolet)
+![Verification](https://img.shields.io/badge/Verification-Advanced_Self--Checking-success)
 
-## 📌 Project Overview
+## Project Overview
 
-This project presents a high-performance **Multi-Channel DMA (Direct Memory Access) Controller** IP core, specifically optimized for **Memory-to-Memory (Mem-to-Mem)** data movement in modern System-on-Chip (SoC) environments. 
+This project presents a highly optimized, fully synthesizable **Multi-Channel DMA (Direct Memory Access) Controller** IP core, designed specifically for **Memory-to-Memory (Mem-to-Mem)** bulk data transfers in modern System-on-Chip (SoC) architectures.
 
-In high-performance computing, offloading bulk data transfers (e.g., SRAM to DDR or inter-DDR copying) from the host CPU is critical to minimize computational overhead. This IP core handles these tasks autonomously, utilizing the **AXI4 Master Full Burst** protocol to achieve maximum bus throughput while allowing the CPU to focus on complex algorithmic execution. The design is fully synthesizable and follows a modular, pipelined architecture for scalable SoC integration.
-
----
-
-## 🚀 Key Features
-
-* **Dedicated Mem-to-Mem Engine:** Engineered specifically for rapid, low-latency data replication between memory address spaces.
-* **4-Channel Concurrent Support:** Supports four independent DMA channels, each with its own configurable source address, destination address, and transfer length registers.
-* **Fair Round-Robin Arbitration:** Implements a hardware-based Round-Robin scheduling algorithm to ensure fair bus access and eliminate bus starvation among active channels.
-* **Industrial AXI4 Standard Integration:**
-    * **AXI4-Lite Slave:** A lightweight control interface for CPU-based register configuration, ensuring compatibility with standard processor buses.
-    * **AXI4 Master Full:** High-performance data engines supporting **Burst INCR** (incrementing) mode for massive data throughput.
-* **Hardware Interlock & Robustness:** Integrated hardware locks automatically prevent unauthorized register overwrites by the CPU while a channel is active (`Status: BUSY`), ensuring data integrity.
-* **Pipelined Throughput Optimization:** Utilizes a **Synchronous FIFO** buffer to decouple read and write latencies, allowing continuous data flow through the pipeline.
+By autonomously managing high-speed data duplication between memory spaces (e.g., SRAM, DDR) using the **AXI4 Master Full Burst** protocol, this IP drastically offloads the host CPU, eliminating computational bottlenecks and maximizing system bus throughput.
 
 ---
 
-## 🏗️ System Architecture Design
+## Key Features
 
-The IP core is developed using a hierarchical, modular architecture that strictly separates control planes from high-speed data planes:
-
-### 1. Control & Configuration Layer
-* **AXI4-Lite Slave (`dma_axi_lite_slave.v`)**: Manages configuration transactions from the host CPU. It features an independent **Latching Handshake** mechanism for address and data phases to ensure full protocol compliance even with variable bus timing.
-* **Register Bank (`dma_reg_bank.v`)**: Acts as the central storage for channel parameters. It manages 32-bit registers for Source Addresses, Destination Addresses, and Transfer Lengths for all four channels.
-
-### 2. Scheduling & Arbitration Layer
-* **Arbiter (`dma_arbiter.v`)**: The "brain" of the DMA scheduling. It monitors start requests across all channels and grants bus access using a **Round-Robin** algorithm. It ensures that priority is shifted after every granted transaction to prevent any single channel from dominating the bus.
-
-### 3. Execution Data Path (The Engines)
-* **Read Engine (`dma_read_engine.v`)**: A Master AXI4 interface that issues burst read cycles from the source address. It features a robust Finite State Machine (FSM) to manage address handshaking and burst data collection into the internal FIFO.
-* **Data FIFO (`dma_fifo.v`)**: A synchronous buffer that acts as a bridge between the read and write domains. It separates clock-to-output timings and provides backpressure signals to the Read Engine when full.
-* **Write Engine (`dma_write_engine.v`)**: Monitors the FIFO and initiates AXI Master write cycles to the destination address. It ensures correct burst writing and completion tracking based on the AXI Write Response channel (Channel B).
+* **4-Channel Concurrent Architecture:** Four independent DMA channels, each equipped with dedicated Source, Destination, and Transfer Length registers.
+* **Hardware Round-Robin Arbitration:** A dynamic, fair-share hardware scheduler (`dma_arbiter`) guarantees that no active channel suffers from bus starvation.
+* **Industrial AXI4 Protocol Integration:**
+    * **AXI4-Lite Slave:** A low-latency configuration interface featuring a robust Latching Handshake to ensure compatibility with all standard CPUs.
+    * **AXI4 Master Full:** Dual data engines (Read/Write) utilizing **Burst INCR** mode to continuously push/pull massive data payloads.
+* **Data Pipelining via Synchronous FIFO:** An internal 32-bit parameterized FIFO decouples Read and Write domains, enabling true parallel processing (simultaneous fetching and flushing).
+* **Hardware Interlock & W1C Protection:** * Automatically locks channel configurations (`BUSY` state) to reject illegal CPU overwrites during active transfers.
+    * Industry-standard **Write-1-to-Clear (W1C)** mechanism for the `DONE` flag to ensure safe interrupt/status handling.
 
 ---
 
-## 🎮 Detailed Register Map
+## System Architecture
 
-The system utilizes a structured register map with a **0x10 offset** for each channel.
+The design is heavily modularized, separating control logic from the high-speed data path:
+
+1. **Control Plane (`dma_axi_lite_slave`, `dma_reg_bank`):** Decodes CPU instructions, safely stores 32-bit addresses/lengths, and manages FSM states.
+2. **Scheduling Plane (`dma_arbiter`):** Constantly monitors channel requests (`ch_req`) and grants bus ownership based on real-time engine availability.
+3. **Execution Plane (`dma_read_engine`, `dma_write_engine`, `dma_fifo`):** * The **Read Engine** masters the AXI bus to burst-read memory into the FIFO. It intelligently handles `RLAST` and backpressure.
+    * The **Write Engine** tracks FIFO capacity and bursts data to the destination, asserting `DONE` only upon receiving a valid AXI Write Response (`BVALID`).
+
+---
+
+## Register Memory Map
+
+Each channel is cleanly separated by a **0x10 byte offset**.
 
 | Offset | Register Name | Access | Function Description |
 | :--- | :--- | :--- | :--- |
-| `0x00` | **REG_SRC_ADDR** | R/W | Source Memory Start Address (32-bit) |
-| `0x04` | **REG_DST_ADDR** | R/W | Destination Memory Start Address (32-bit) |
-| `0x08` | **REG_LENGTH** | R/W | Total bytes to transfer (Multiple of 4) |
-| `0x0C` | **REG_CTRL_STAT**| R/W | [0]: **START**, [1]: **DONE**, [2]: **BUSY** |
+| `0x00` | **REG_SRC_ADDR** | R/W | Source Memory Start Address |
+| `0x04` | **REG_DST_ADDR** | R/W | Destination Memory Start Address |
+| `0x08` | **REG_LENGTH** | R/W | Total bytes to transfer (Must be multiple of 4) |
+| `0x0C` | **REG_CTRL_STAT**| R/W | [0]: **START** (Set 1 to run) <br> [1]: **DONE** (Write 1 to Clear) <br> [2]: **BUSY** (Read-only) |
 
-* **Channel Base Addresses:**
-    * Channel 0: `0x00`
-    * Channel 1: `0x10`
-    * Channel 2: `0x20`
-    * Channel 3: `0x30`
+*(Channel 0 starts at `0x00`, Channel 1 at `0x10`, Channel 2 at `0x20`, Channel 3 at `0x30`)*
 
 ---
 
-## 📈 Communication & Data Flow Protocol
+## Advanced Verification Methodology
 
-1.  **Host Configuration:** The CPU configures the Source, Destination, and Length registers via AXI4-Lite.
-2.  **Activation:** The CPU sets the `BIT_START`. The Register Bank immediately sets the `BIT_BUSY` flag, locking the configuration for that channel.
-3.  **Arbitration:** The Arbiter detects the request and, once the shared engines are idle, issues a `grant_valid` to the chosen channel.
-4.  **Burst Execution:** * **Read Engine** fetches data bursts from memory into the FIFO.
-    * **Write Engine** simultaneously pushes data from the FIFO to the destination address.
-5.  **Termination:** Once the byte count reaches the requested length, the system clears the `START` bit and sets the `DONE` flag, signaling the CPU via the register bank.
+The IP core was subjected to extreme stress testing using an advanced **Self-Checking Testbench** environment (`tb_dma_top.v`). The verification suite includes a custom CPU BFM and a zero-latency AXI4 RAM model.
 
----
+### Test Scenarios Passed:
+1. **Single Channel Sanity:** Basic burst fetching and flushing.
+2. **Interlock Protection Test:** Intentionally deploying the CPU BFM to inject corrupted addresses (`0xDEADBEEF`) into an active channel. The hardware successfully blocked the attack.
+3. **Extreme Multi-Channel Stress:** Simultaneously firing all 4 channels with drastically different payload sizes (64B to 512B), forcing the Arbiter and FIFO into extreme context-switching.
 
-## 📂 Directory Structure
-
+### Verification Log (Zero Data Corruption):
 ```text
-.
-├── src/                     # Synthesizable RTL Design Files
-│   ├── dma_defines.v        # Global parameters and macros
-│   ├── dma_top.v            # Top-level IP wrapper
-│   ├── dma_axi_lite_slave.v # CPU Configuration interface
-│   ├── dma_reg_bank.v       # Channel register storage
-│   ├── dma_arbiter.v        # Round-Robin scheduler
-│   ├── dma_read_engine.v    # AXI4 Master Read logic
-│   ├── dma_write_engine.v   # AXI4 Master Write logic
-│   └── dma_fifo.v           # Synchronous data buffer
-├── tb/                      # Verification Environment
-│   ├── tb_dma_top.v         # Main self-checking testbench
-│   ├── axi_lite_master_bfm.v# CPU Bus Functional Model
-│   └── axi_ram_model.v      # AXI4 Slave RAM behavioral model
-└── README.md
+==============================================
+  START DMA CONTROLLER VERIFICATION
+==============================================
+
+TEST 1 : Single Channel Transfer
+...
+  => Verifying: SRC(0x00001000) -> DST(0x00001500) | 128 bytes
+Transfer verified successfully (32 words)
+
+TEST 2 : Interlock Protection
+...
+  => Verifying: SRC(0x00002000) -> DST(0x00002500) | 256 bytes
+Transfer verified successfully (64 words)
+
+TEST 3 : Multi-Channel Stress
+...
+  => Verifying: SRC(0x00001000) -> DST(0x00001800) | 256 bytes
+Transfer verified successfully (64 words)
+  => Verifying: SRC(0x00002000) -> DST(0x00002800) | 128 bytes
+Transfer verified successfully (32 words)
+  => Verifying: SRC(0x00003000) -> DST(0x00003800) | 64 bytes
+Transfer verified successfully (16 words)
+  => Verifying: SRC(0x00004000) -> DST(0x00004800) | 512 bytes
+Transfer verified successfully (128 words)
+
+==============================================
+PASSED : No data corruption detected.
+==============================================
