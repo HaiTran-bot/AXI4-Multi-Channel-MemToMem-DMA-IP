@@ -37,7 +37,45 @@ The design is heavily modularized, separating control logic from the high-speed 
     * The **Write Engine** tracks FIFO capacity and bursts data to the destination, asserting `DONE` only upon receiving a valid AXI Write Response (`BVALID`).
 
 ---
+## 🏗️ System Architecture Diagram
 
+Below is the Data Path and Control Path inside IP DMA. 
+```mermaid
+graph TD
+    %% External Blocks
+    CPU[Host CPU / Testbench BFM]:::ext
+    RAM[System RAM / Memory]:::ext
+
+    %% DMA Controller Internal Modules
+    subgraph DMA Controller IP Core
+        direction TB
+        AXI_LITE(AXI4-Lite Slave Interface):::ctrl
+        REG_BANK(Register Bank<br/>4 Channels):::ctrl
+        ARBITER{Round-Robin<br/>Arbiter}:::ctrl
+        
+        RD_ENG(Read Engine<br/>AXI4 Master Full):::dp
+        FIFO[(Synchronous<br/>Data FIFO)]:::dp
+        WR_ENG(Write Engine<br/>AXI4 Master Full):::dp
+    end
+
+    %% Control Flow
+    CPU -- "AXI-Lite (Config)" --> AXI_LITE
+    AXI_LITE -- "Read/Write Reg" --> REG_BANK
+    REG_BANK -- "ch_req[3:0]" --> ARBITER
+    ARBITER -- "Grant (ch_id)" --> RD_ENG
+    ARBITER -- "Grant (ch_id)" --> WR_ENG
+    ARBITER -. "Set BUSY Lock" .-> REG_BANK
+
+    %% Data Flow
+    RD_ENG == "AXI4 Burst Read" ==> RAM
+    RD_ENG -- "Push Data" --> FIFO
+    FIFO -- "Pop Data" --> WR_ENG
+    WR_ENG == "AXI4 Burst Write" ==> RAM
+
+    %% Styles
+    classDef ext fill:#e2e2e2,stroke:#333,stroke-width:2px,color:#000;
+    classDef ctrl fill:#d4e6f1,stroke:#2874a6,stroke-width:2px,color:#000;
+    classDef dp fill:#fad7a1,stroke:#d35400,stroke-width:2px,color:#000;
 ## Register Memory Map
 
 Each channel is cleanly separated by a **0x10 byte offset**.
