@@ -37,60 +37,51 @@ The design is heavily modularized, separating control logic from the high-speed 
     * The **Write Engine** tracks FIFO capacity and bursts data to the destination, asserting `DONE` only upon receiving a valid AXI Write Response (`BVALID`).
 
 ---
-## 🏗️ System Architecture Diagram
+The design is heavily modularized, separating control logic from the high-speed data path.
 
-Below is the Data Path and Control Path inside IP DMA. 
-```mermaid
-graph TD
-    %% External Blocks
-    CPU[Host CPU / Testbench BFM]:::ext
-    RAM[System RAM / Memory]:::ext
+```text
++--------------------------------------------------------------------------------+
+|                              System-on-Chip (SoC)                              |
+|                                                                                |
+|  +----------------+                                        +----------------+  |
+|  |                |                                        |                |  |
+|  |    Host CPU    |                                        |   System RAM   |  |
+|  |  (Testbench)   |                                        |  (Memory Model)|  |
+|  |                |                                        |                |  |
+|  +-------+--------+                                        +--------+-------+  |
+|          | (AXI4-Lite)                                              | (AXI4)   |
+|          v                                                          |          |
+|  +---------------------------------------------------------------+  |          |
+|  |             MULTI-CHANNEL MEM-TO-MEM DMA CONTROLLER           |  |          |
+|  |                                                               |  |          |
+|  |  +----------------+  [Registers]  +------------------------+  |  |          |
+|  |  |                +-------------->|                        |  |  |          |
+|  |  | AXI-Lite Slave |               |  Register Bank (4-Ch)  |  |  |          |
+|  |  |   Interface    |<--------------+ (SRC, DST, LEN, CTRL)  |  |  |          |
+|  |  |                |   [Status]    |                        |  |  |          |
+|  |  +----------------+               +-----------+------------+  |  |          |
+|  |                                               | ch_req[3:0]   |  |          |
+|  |                                               v               |  |          |
+|  |                                   +------------------------+  |  |          |
+|  |                                   |                        |  |  |          |
+|  |                                   |  Round-Robin Arbiter   |  |  |          |
+|  |                                   |                        |  |  |          |
+|  |                                   +------+----------+------+  |  |          |
+|  |                                 Grant ID |          | Grant ID|  |          |
+|  |                                          v          v         |  |          |
+|  |  +----------------+  [Push]       +---------+    +---------+  |  |          |
+|  |  |                +-------------->|         |    |         |  |  |          |
+|  |  |  Read Engine   |               | Sync    |    |  Write  |  |  |          |
+|  +--+ (AXI4 Master)  |               | FIFO    |--->| Engine  +--+  |          |
+|     |                |               | (64x32) |    | (AXI4)  |     |          |
+|     +--------+-------+               +---------+    +----+----+     |          |
+|              |                                           |          |          |
+|==============|===========================================|==========|==========|
+|              | AXI4 Burst Read                           | AXI4 Burst Write    |
+|              +-------------------------------------------+                     |
++--------------------------------------------------------------------------------+
 
-    %% DMA Controller Internal Modules
-    subgraph DMA Controller IP Core
-        direction TB
-        AXI_LITE(AXI4-Lite Slave Interface):::ctrl
-        REG_BANK(Register Bank<br/>4 Channels):::ctrl
-        ARBITER{Round-Robin<br/>Arbiter}:::ctrl
-        
-        RD_ENG(Read Engine<br/>AXI4 Master Full):::dp
-        FIFO[(Synchronous<br/>Data FIFO)]:::dp
-        WR_ENG(Write Engine<br/>AXI4 Master Full):::dp
-    end
-
-    %% Control Flow
-    CPU -- "AXI-Lite (Config)" --> AXI_LITE
-    AXI_LITE -- "Read/Write Reg" --> REG_BANK
-    REG_BANK -- "ch_req[3:0]" --> ARBITER
-    ARBITER -- "Grant (ch_id)" --> RD_ENG
-    ARBITER -- "Grant (ch_id)" --> WR_ENG
-    ARBITER -. "Set BUSY Lock" .-> REG_BANK
-
-    %% Data Flow
-    RD_ENG == "AXI4 Burst Read" ==> RAM
-    RD_ENG -- "Push Data" --> FIFO
-    FIFO -- "Pop Data" --> WR_ENG
-    WR_ENG == "AXI4 Burst Write" ==> RAM
-
-    %% Styles
-    classDef ext fill:#e2e2e2,stroke:#333,stroke-width:2px,color:#000;
-    classDef ctrl fill:#d4e6f1,stroke:#2874a6,stroke-width:2px,color:#000;
-    classDef dp fill:#fad7a1,stroke:#d35400,stroke-width:2px,color:#000;
-## Register Memory Map
-
-Each channel is cleanly separated by a **0x10 byte offset**.
-
-| Offset | Register Name | Access | Function Description |
-| :--- | :--- | :--- | :--- |
-| `0x00` | **REG_SRC_ADDR** | R/W | Source Memory Start Address |
-| `0x04` | **REG_DST_ADDR** | R/W | Destination Memory Start Address |
-| `0x08` | **REG_LENGTH** | R/W | Total bytes to transfer (Must be multiple of 4) |
-| `0x0C` | **REG_CTRL_STAT**| R/W | [0]: **START** (Set 1 to run) <br> [1]: **DONE** (Write 1 to Clear) <br> [2]: **BUSY** (Read-only) |
-
-*(Channel 0 starts at `0x00`, Channel 1 at `0x10`, Channel 2 at `0x20`, Channel 3 at `0x30`)*
-
----
-
+```
 ## Advanced Verification Methodology
 
 The IP core was subjected to extreme stress testing using an advanced **Self-Checking Testbench** environment (`tb_dma_top.v`). The verification suite includes a custom CPU BFM and a zero-latency AXI4 RAM model.
