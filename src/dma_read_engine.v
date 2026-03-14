@@ -25,40 +25,36 @@ module dma_read_engine #(
 )(
     input  wire                   clk,
     input  wire                   rst_n,
- 
     input  wire                   start,
     input  wire [ADDR_WIDTH-1:0]  src_addr,
     input  wire [31:0]            transfer_len,
     output reg                    read_done,
- 
     input  wire                   fifo_full,
     output wire                   fifo_wr_en,
     output wire [DATA_WIDTH-1:0]  fifo_din,
- 
     output reg  [ADDR_WIDTH-1:0]  m_axi_araddr,
     output reg                    m_axi_arvalid,
     input  wire                   m_axi_arready,
     output wire [7:0]             m_axi_arlen,
     output wire [2:0]             m_axi_arsize,
     output wire [1:0]             m_axi_arburst,
- 
     input  wire [DATA_WIDTH-1:0]  m_axi_rdata,
     input  wire                   m_axi_rvalid,
     output wire                   m_axi_rready,
     input  wire                   m_axi_rlast,
     input  wire [1:0]             m_axi_rresp
 );
- 
+
     localparam ST_IDLE    = 4'b0001;
     localparam ST_RD_ADDR = 4'b0010;
     localparam ST_RD_DATA = 4'b0100;
     localparam ST_RD_DONE = 4'b1000;
- 
+
     reg [3:0]  current_state, next_state;
     reg [31:0] bytes_read_cnt;
  
     wire [31:0] bytes_next = bytes_read_cnt + 4;
- 
+
     assign m_axi_arlen   = BURST_LEN - 1;
     assign m_axi_arsize  = 3'b010; // 4 bytes/beat
     assign m_axi_arburst = 2'b01;  // INCR
@@ -98,8 +94,10 @@ module dma_read_engine #(
                     if (start) m_axi_araddr <= src_addr;
                 end
                 ST_RD_ADDR: begin
-                    m_axi_arvalid <= 1'b1;
-                    if (m_axi_arready) begin
+                    // [FIXED BUG]: Logic Handshake an toàn tuyệt đối
+                    if (!m_axi_arvalid) begin
+                        m_axi_arvalid <= 1'b1;
+                    end else if (m_axi_arready) begin
                         m_axi_arvalid <= 1'b0;
                         m_axi_araddr  <= m_axi_araddr + (BURST_LEN * (DATA_WIDTH/8));
                     end

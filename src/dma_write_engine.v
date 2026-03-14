@@ -25,55 +25,47 @@ module dma_write_engine #(
 )(
     input  wire                   clk,
     input  wire                   rst_n,
- 
     input  wire                   start,
     input  wire [ADDR_WIDTH-1:0]  dst_addr,
     input  wire [31:0]            transfer_len,
     output reg                    write_done,
- 
     input  wire                   fifo_empty,
     output wire                   fifo_rd_en,
     input  wire [DATA_WIDTH-1:0]  fifo_dout,
- 
     output reg  [ADDR_WIDTH-1:0]  m_axi_awaddr,
     output reg                    m_axi_awvalid,
     input  wire                   m_axi_awready,
     output wire [7:0]             m_axi_awlen,
     output wire [2:0]             m_axi_awsize,
     output wire [1:0]             m_axi_awburst,
- 
     output wire [DATA_WIDTH-1:0]  m_axi_wdata,
     output wire                   m_axi_wvalid,
     input  wire                   m_axi_wready,
     output wire                   m_axi_wlast,
- 
     input  wire [1:0]             m_axi_bresp,
     input  wire                   m_axi_bvalid,
     output wire                   m_axi_bready
 );
- 
+
     localparam ST_IDLE    = 4'b0001;
     localparam ST_WR_ADDR = 4'b0010;
     localparam ST_WR_DATA = 4'b0100;
     localparam ST_WR_RESP = 4'b1000;
- 
+
     reg [3:0]  current_state, next_state;
     reg [31:0] bytes_written_cnt;
     reg [7:0]  burst_cnt;
-    
     reg is_active;
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)           is_active <= 1'b0;
         else if (start)       is_active <= 1'b1;
         else if (write_done)  is_active <= 1'b0;
     end
  
-    wire [31:0] bytes_next = bytes_written_cnt + (DATA_WIDTH/8);
- 
     assign m_axi_awlen   = BURST_LEN - 1;
     assign m_axi_awsize  = 3'b010;
     assign m_axi_awburst = 2'b01;
-    
     
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) current_state <= ST_IDLE;
@@ -100,7 +92,7 @@ module dma_write_engine #(
     assign fifo_rd_en   = m_axi_wvalid && m_axi_wready;
     assign m_axi_wlast  = (burst_cnt == (BURST_LEN - 1));
     assign m_axi_bready = (current_state == ST_WR_RESP);
- 
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             m_axi_awvalid     <= 0;
@@ -119,8 +111,10 @@ module dma_write_engine #(
                     end
                 end
                 ST_WR_ADDR: begin
-                    m_axi_awvalid <= 1'b1;
-                    if (m_axi_awready) begin
+                    // [FIXED BUG]: Logic Handshake an toàn tuyệt đối
+                    if (!m_axi_awvalid) begin
+                        m_axi_awvalid <= 1'b1;
+                    end else if (m_axi_awready) begin
                         m_axi_awvalid <= 1'b0;
                         m_axi_awaddr  <= m_axi_awaddr + (BURST_LEN * (DATA_WIDTH/8));
                     end
