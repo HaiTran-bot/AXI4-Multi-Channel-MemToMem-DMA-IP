@@ -1,11 +1,5 @@
 # High-Performance Multi-Channel Mem-to-Mem DMA Controller IP
 
-![Platform](https://img.shields.io/badge/Platform-Xilinx_Vivado-blue)
-![Language](https://img.shields.io/badge/Language-Verilog-green)
-![Protocol](https://img.shields.io/badge/Protocol-AXI4--Full_/_AXI4--Lite-red)
-![Architecture](https://img.shields.io/badge/Architecture-Pipelined_FIFO-orange)
-![Verification](https://img.shields.io/badge/Verification-Advanced_Self--Checking-success)
-
 ## Project Overview
 
 This project presents a highly optimized, fully synthesizable **Multi-Channel DMA (Direct Memory Access) Controller** IP core, designed specifically for **Memory-to-Memory (Mem-to-Mem)** bulk data transfers in modern System-on-Chip (SoC) architectures.
